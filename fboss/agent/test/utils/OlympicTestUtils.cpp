@@ -330,6 +330,17 @@ void addQueueWredDropConfig(
   queue2.aqms()->push_back(GetWredConfig(*asic, 1, maxThresh, 5));
   portQueues.push_back(queue2);
 
+  if (!asic->isSupported(HwAsic::Feature::BUFFER_POOL)) {
+    // SaiPortManager only programs reservedBytes/scalingFactor when BUFFER_POOL
+    // is supported, and errors out if the config sets them otherwise. So for
+    // BUFFER_POOL-less ASICs (e.g. TomahawkUltra1) the config must not carry
+    // them — clear them here at the source.
+    for (auto& queue : portQueues) {
+      queue.reservedBytes().reset();
+      queue.scalingFactor().reset();
+    }
+  }
+
   config->portQueueConfigs()["queue_config"] = portQueues;
   for (auto& port : *config->ports()) {
     port.portQueueConfigName() = "queue_config";
