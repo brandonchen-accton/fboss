@@ -262,11 +262,17 @@ class AgentAqmTest : public AgentHwTest {
       AqmTestStats& stats) {
     if (useQueueStatsForAqm) {
       if (isSupportedOnAllAsics(HwAsic::Feature::QUEUE_ECN_COUNTER)) {
-        stats.outEcnCounter +=
-            portStats.queueEcnMarkedPackets_().value().find(queueId)->second;
+        const auto& ecnByQueue = portStats.queueEcnMarkedPackets_().value();
+        auto ecnIt = ecnByQueue.find(queueId);
+        if (ecnIt != ecnByQueue.end()) {
+          stats.outEcnCounter += ecnIt->second;
+        }
       }
-      stats.wredDroppedPackets +=
-          portStats.queueWredDroppedPackets_().value().find(queueId)->second;
+      const auto& wredByQueue = portStats.queueWredDroppedPackets_().value();
+      auto wredIt = wredByQueue.find(queueId);
+      if (wredIt != wredByQueue.end()) {
+        stats.wredDroppedPackets += wredIt->second;
+      }
     } else {
       stats.outEcnCounter += folly::copy(portStats.outEcnCounter_().value());
       stats.wredDroppedPackets +=
@@ -357,10 +363,14 @@ class AgentAqmTest : public AgentHwTest {
       bool enableEcn,
       bool warmbootTest = false) {
     auto kQueueId = utility::getOlympicQueueId(utility::OlympicQueueType::ECN1);
-    // For VoQ switch, AQM stats are collected from queue!
+    // AQM stats are collected from queue for VoQ switches. Experimental (TU1):
+    // also route to queue counter when QUEUE_ECN_COUNTER is enabled (toggled
+    // dynamically at runtime) so we can observe queue-level ECN/WRED behavior
+    // on a platform whose port-level AQM counters are stubs.
     auto useQueueStatsForAqm =
         checkSameAndGetAsicForTesting(getAgentEnsemble()->getL3Asics())
-            ->getSwitchType() == cfg::SwitchType::VOQ;
+                ->getSwitchType() == cfg::SwitchType::VOQ ||
+        isSupportedOnAllAsics(HwAsic::Feature::QUEUE_ECN_COUNTER);
     auto statsIncremented = [this](
                                 const AqmTestStats& aqmStats, uint8_t ecnVal) {
       auto increment =
@@ -571,16 +581,20 @@ class AgentAqmTest : public AgentHwTest {
           masterLogicalInterfacePortIds()[0],
           numPacketsToSend);
 
+      // Use the same flag for before/after snapshots so the delta is
+      // consistent. Experimental (TU1): route to queue counter when
+      // QUEUE_ECN_COUNTER is enabled (toggled dynamically at runtime).
+      bool useQueueStatsForAqm = asic->getSwitchType() == cfg::SwitchType::VOQ ||
+          isSupportedOnAllAsics(HwAsic::Feature::QUEUE_ECN_COUNTER);
       AqmTestStats before{};
       extractAqmTestStats(
-          beforePortStats, kQueueId, false /*useQueueStatsForAqm*/, before);
+          beforePortStats, kQueueId, useQueueStatsForAqm, before);
 
       // For ECN all packets are sent out, for WRED, account for drops!
       const uint64_t kExpectedOutPackets = isEct(ecnCodePoint)
           ? numPacketsToSend
           : numPacketsToSend - expectedMarkedOrDroppedPacketCount;
 
-      bool useQueueStatsForAqm = asic->getSwitchType() == cfg::SwitchType::VOQ;
       WITH_RETRIES_N_TIMED(10, std::chrono::milliseconds(1000), {
         uint64_t outPackets{0}, wredDrops{0}, ecnMarking{0};
         // For VoQ switch, AQM stats are collected from queue!
