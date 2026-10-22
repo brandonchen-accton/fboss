@@ -139,7 +139,9 @@
 // CBFC (saivirtualchannel.h, the CBFC port attributes, the VC qos map types)
 // is upstream as of SAI 1.19.0. brcm-sai 16.0_ea_odp carries the same
 // declarations via its cbfc.patch while still reporting 1.18.1, so neither
-// check alone covers both.
+// check alone covers both. OSS builds may fall back to public SAI headers when
+// the NPU SDK does not ship the patched core headers; do not enable CBFC for
+// that combination.
 //
 // TODO(agrewal): delete SAI_CBFC_SUPPORTED once Broadcom's 16.0 drop is
 // rebased onto the 1.19 tag and reports it. Every CBFC use can then gate on
@@ -151,7 +153,8 @@
 // -D values supplied by both the Buck config and the OSS cmake, whereas
 // SAI_VERSION is only defined above under #ifndef IS_OSS, so using it here
 // breaks the OSS build.
-#if defined(BRCM_SAI_SDK_XGS_GTE_16_0)
+#if defined(BRCM_SAI_SDK_XGS_GTE_16_0) && \
+    (!defined(IS_OSS) || defined(SAI_HEADERS_FROM_NPU_SDK))
 #define SAI_CBFC_SUPPORTED
 #elif defined(SAI_VER_MAJOR) && defined(SAI_VER_MINOR) && \
     (SAI_VER_MAJOR > 1 || (SAI_VER_MAJOR == 1 && SAI_VER_MINOR >= 19))

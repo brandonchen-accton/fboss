@@ -321,6 +321,10 @@ else()
   find_path(SAI_SDK_HEADERS_DIR NAMES lib/sai/inc/sai.h)
   if (SAI_SDK_HEADERS_DIR)
     set(SAI_INCLUDE_DIR "${SAI_SDK_HEADERS_DIR}/lib/sai/inc")
+    # Let version guards distinguish vendor-patched headers from the public
+    # SAI fallback. Some SDKs backport declarations without changing the
+    # version reported by saiversion.h.
+    add_definitions(-DSAI_HEADERS_FROM_NPU_SDK)
   else()
     find_path(SAI_INCLUDE_DIR NAMES sai.h)
   endif()
